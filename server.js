@@ -6,131 +6,49 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Replace this with the exact token shown on the OpenAI Apps page
-const OPENAI_CHALLENGE_TOKEN = 'JFnpgzRePk9Omk3kyJM0Oar-Aj7iTzUMhOWAego_KEw';
+// ✅ PUT YOUR REAL TOKEN HERE
+const OPENAI_CHALLENGE_TOKEN = 'JFpngzRePk90mk3kyJM00ar-Aj7iTzUmhOWAego_KEw';
 
+// ✅ Root route (for testing)
 app.get('/', (_req, res) => {
   res.status(200).send('JobNova MCP Server Running');
 });
 
+// ✅ Health check
 app.get('/health', (_req, res) => {
-  res.status(200).json({ ok: true, service: 'jobnova-chatgpt-app' });
+  res.status(200).json({ ok: true });
 });
 
-// Domain verification route for OpenAI Apps
+// ✅ DOMAIN VERIFICATION (CRITICAL)
 app.get('/.well-known/openai-apps-challenge', (_req, res) => {
-  res.type('text/plain');
-  res.send(OPENAI_CHALLENGE_TOKEN);
+  res.setHeader('Content-Type', 'text/plain');
+  res.status(200).send(OPENAI_CHALLENGE_TOKEN);
 });
 
-// Simple MCP-style endpoint
+// ✅ MCP ENDPOINT (OpenAI will call this)
 app.post('/mcp', async (req, res) => {
   try {
-    const body = req.body || {};
-    const { method, params, id } = body;
+    const { method, params, id } = req.body || {};
 
-    // Basic validation
+    // ❌ Invalid request
     if (!method) {
       return res.status(400).json({
         jsonrpc: '2.0',
-        id: id ?? null,
-        error: {
-          code: -32600,
-          message: 'Invalid Request: missing method'
-        }
+        id: id || null,
+        error: { code: -32600, message: 'Missing method' }
       });
     }
 
-    // Tool discovery
+    // ✅ Tool discovery
     if (method === 'tools/list') {
-      return res.status(200).json({
+      return res.json({
         jsonrpc: '2.0',
-        id: id ?? null,
+        id: id || null,
         result: {
           tools: [
             {
               name: 'analyze_resume',
-              description: 'Analyze a resume and provide basic feedback.',
-              input_schema: {
-                type: 'object',
-                properties: {
-                  resume: {
-                    type: 'string',
-                    description: 'The resume text to analyze.'
-                  }
-                },
-                required: ['resume']
-              }
-            }
-          ]
-        }
-      });
-    }
-
-    // Tool execution
-    if (method === 'tools/call') {
-      const toolName = params?.name;
-      const args = params?.arguments || {};
-
-      if (toolName !== 'analyze_resume') {
-        return res.status(404).json({
-          jsonrpc: '2.0',
-          id: id ?? null,
-          error: {
-            code: -32601,
-            message: `Unknown tool: ${toolName}`
-          }
-        });
-      }
-
-      const resume = typeof args.resume === 'string' ? args.resume.trim() : '';
-
-      if (!resume) {
-        return res.status(400).json({
-          jsonrpc: '2.0',
-          id: id ?? null,
-          error: {
-            code: -32602,
-            message: 'Invalid params: resume is required'
-          }
-        });
-      }
-
-      const preview = resume.slice(0, 300);
-
-      return res.status(200).json({
-        jsonrpc: '2.0',
-        id: id ?? null,
-        result: {
-          content: [
-            {
-              type: 'text',
-              text: [
-                'Resume analysis:',
-                '- Strong starting point',
-                '- Add measurable achievements',
-                '- Improve keyword alignment for ATS',
-                '- Make formatting and section headings clearer',
-                '',
-                'Preview received:',
-                preview
-              ].join('\n')
-            }
-          ]
-        }
-      });
-    }
-
-    // Optional compatibility fallback for simpler scan attempts
-    if (method === 'discover' || method === 'list_tools') {
-      return res.status(200).json({
-        jsonrpc: '2.0',
-        id: id ?? null,
-        result: {
-          tools: [
-            {
-              name: 'analyze_resume',
-              description: 'Analyze a resume and provide basic feedback.',
+              description: 'Analyze a resume and give feedback',
               input_schema: {
                 type: 'object',
                 properties: {
@@ -144,26 +62,56 @@ app.post('/mcp', async (req, res) => {
       });
     }
 
+    // ✅ Tool execution
+    if (method === 'tools/call') {
+      const tool = params?.name;
+      const resume = params?.arguments?.resume || '';
+
+      if (tool !== 'analyze_resume') {
+        return res.status(404).json({
+          jsonrpc: '2.0',
+          id: id || null,
+          error: { code: -32601, message: 'Tool not found' }
+        });
+      }
+
+      return res.json({
+        jsonrpc: '2.0',
+        id: id || null,
+        result: {
+          content: [
+            {
+              type: 'text',
+              text:
+                'Resume analysis:\n' +
+                '- Add measurable achievements\n' +
+                '- Improve ATS keywords\n' +
+                '- Strengthen summary section\n\n' +
+                'Preview:\n' +
+                resume.slice(0, 200)
+            }
+          ]
+        }
+      });
+    }
+
+    // ❌ Unknown method
     return res.status(400).json({
       jsonrpc: '2.0',
-      id: id ?? null,
-      error: {
-        code: -32601,
-        message: `Method not supported: ${method}`
-      }
+      id: id || null,
+      error: { code: -32601, message: 'Method not supported' }
     });
+
   } catch (error) {
     return res.status(500).json({
       jsonrpc: '2.0',
       id: null,
-      error: {
-        code: -32000,
-        message: error?.message || 'Internal server error'
-      }
+      error: { code: -32000, message: error.message }
     });
   }
 });
 
+// ✅ IMPORTANT: Render uses dynamic port
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
